@@ -1,4 +1,6 @@
-# 🏥 Patient Consent Management System on Blockchain (Web3 + IPFS)
+# 🏥 Patient Consent Management System on Blockchain
+
+> **A Decentralized, Privacy-Preserving EHR Consent Architecture powered by Ethereum Smart Contracts, AES-GCM-256 Client-Side Cryptography, and IPFS Storage.**
 
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.20-363636?style=for-the-badge&logo=solidity&logoColor=white)](https://soliditylang.org/)
 [![Hardhat](https://img.shields.io/badge/Hardhat-2.22.x-FFF100?style=for-the-badge&logo=hardhat&logoColor=black)](https://hardhat.org/)
@@ -7,93 +9,142 @@
 [![IPFS](https://img.shields.io/badge/IPFS-Decentralized_Storage-65C2CB?style=for-the-badge&logo=ipfs&logoColor=white)](https://ipfs.tech/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
-An enterprise-grade, decentralized **Patient Consent Management System** built on Ethereum blockchain. The platform provides patients with complete autonomy over their Electronic Health Records (EHR) through **granular, time-bound, and revocable smart contracts**, combined with **AES-GCM client-side encryption** and **IPFS decentralized storage**
+---
+
+## �� Table of Contents
+- [🌝!^ecutive Summary](c-executive-summary)
+- [✨️ Core Features](#-core-features)
+- [🏗 System Architecture](#-system-architecture)
+- [�n Smart Contract Specification](c-smart-contract-specification)
+- [🚉 Automated Unit Tests](#-automated-unit-tests)
+- [💻 Tech Stack](#-tech-stack)
+- [🛀 Quick Start & Local Deployment](#-quick-start---local-deployment)
+- [🚱 MetaMask Configuration Guide](#-metamask-configuration-guide)
+- [📖 User Journey Walkthrough](#-user-journey-walkthrough)
+- [🔒 Security & Privacy Model](c-security---privacy-model)
+- [📄 License](c-license)
 
 ---
 
-## 🌝 Key Highlights
+## 🌝 Executive Summary
 
-- ***🔔 Decentralized Consent Registry**: Smart contract (`PatientConsent.soll) tracks access permissions with zero central authority or single point of failure.
-- **⏱� Time-Bound Access Permissions**: Patients specify exact validity durations (e.g., 1 hour, 24 hours, 7 days, 30 days). Access automatically expires on-chain via block timestamps (`block.timestamp <= validUntil`).
-- **�� Instant Access Revocation**: Patients can immediately revoke a doctor's access with a single on-chain transaction.
-- **🛡��� Client-Side AES-GCM 256-bit Encryption**: Medical files (PDFs, MRI scans, lab reports) and clinical notes are encrypted *in the browser* before being sent to IPFS. Storage providers never see unencrypted data.
-- **📦 IPFS & Pinata Decentralized Storage**: Records are assigned immutable Content Identifiers (CIDs) and pinned to IPFS.
-- **🪹 Dedicated Doctor Diagnostic Portal**: Doctors query `verifyConsent(patient, doctor)` to validate on-chain permissions and view/decrypt medical records with the authorized key.
-- **📜 Live Audit Stream**: Real-time contract event listeners subscribe to `ConsentGranted` and `ConsentRevoked` events, displaying live transaction hashes.
-- **🚁 100% Automated Test Coverage**: 8 unit tests in Hardhat verifying deployment, authorization, expiration, and error handling.
+Traditional Electronic Health Record (EHR) systems store patient data on centralized databases vulnerable to single-point-of-failure breaches, unauthorized doctor access, and opaque data sharing practices.
+
+The **Patient Consent Management System** restores patient data ownership through:
+1. **Self-Sovereign Consent Control**: Patients grant and revoke access permissions via immutable Ethereum smart contracts.
+2. **Time-Bound Consent Expiry**: Permissions automatically expire on-chain using block timestamps.
+3. **End-to-End Cryptography**: Medical scans, lab results, and clinical notes are encrypted on the patient's device using **AES-GCM 256-bit** encryption before being stored on **IPFS**.
+4. **Zero Knowledge on Storage**: Storage nodes and unauthorized parties can never read raw health data.
+
+---
+
+## ✨／ Core Features
+
+| Feature | Description |
+| :--- | :--- |
+| s🔔 **On-Chain Consent Registry** | Double mapping registry `consentRegistry[patient][doctor]` tracking active status, expiry, and IPFS CID. |
+| ⏱� **Time-Bound Validity** | Patients choose exact consent duration (1h, 24h, 7d, 30d). Smart contract verifies validity with `block.timestamp <= validUntil`. |
+| ✬️ **Instant One-Click Revocation** | Patients can instantly revoke any doctor's permission on-chain before the duration expires. |
+| 🔨 **Client-Side AES-GCM Encryption** | Web Crypto API PBKDF2 key derivation and 256-bit AES encryption ensures no plain-text data leaves the browser. |
+| 📦 **IPFS Decentralized Vault** | Encrypted payload is pinned to IPFS with deterministic Content Identifiers (CIDs) and Pinata integration. |
+| 🪹 **Doctor Verification Portal** | Healthcare providers verify on-chain permissions in real-time and decrypt clinical files using authorized keys. |
+| 📌 **Real-Time Blockchain Audit Log** | Live event listeners subscribe to `ConsentGranted` and `ConsentRevoked` contract events. |
 
 ---
 
 ## 🏗 System Architecture
 
-```
-    +-------------------+               +-------------------+-
-    |   Patient Portal   |               |   Doctor Portal    |
-    | (MetaMask Account) |               | (MetaMask Account) |
-    +---------+---------+               +---------+---------+
-              |                                    |
-  1. Encrypt Record (QES-GCM)          4. Query verifyConsent(patient, doctor)
-  2. Pin to IPFS (Get CID)                        |
-  3. Call grantConsent(doctor, CID, time)         v
-             |                          +----------------------+-
-             +------------------------> | PatientConsent.sol   |
-                                     | Smart Contract       |
-                                     +----------+-----------+
-                                                |
-                                    5. Returns: hasAccess & CID
-                                                |
-                                                v
-                                     +----------------------+
-                                     | IPFS / Pinata Vault  |
-                                     | (Encrypted Payload)  |
-                                     +----------+-----------+
-                                                |
-                                    6. Decrypt with Secret Key
-                                                v
-                                     [ Decrypted EHR View ]
+```text
+               +--------------------------------------------+
+               |           PATIENT WEB3 PORTAL             |
+               +----------------------+---------------------+
+                                     |
+      1. Select File + Set Key       | 2. Encrypt locally (AES-GCM 256-bit)
+                                     v
+               +--------------------------------------------+
+               |            IPLS SYSTEM VAULT          |
+               |       (Stores Encrypted Blob & CID)       |
+               +----------------------+---------------------+
+                                     |
+           3. Call grantConsent(doctor, ipfsCID, duration)  |
+                                     v
+               +--------------------------------------------+
+               |      ETHEREUM SMART CONTRACT REGISTRY      |
+               |           (PatientConsent.sol)            |
+               +----------------------+---------------------+
+                                     ^
+      4. Query verifyConsent(patient) | 5. Returns: hasAccess (true/false) & CID
+                                     |
+               +-----------------------+---------------------+
+               |            DOCTOR WEB3 PORTAL             |
+               |    (Validates Access & Decrypts File)     |
+               +--------------------------------------------+
 ```
 
 ---
 
-## �n Smart Contract Overview (`PatientConsent.soll)
+## �n Smart Contract Specification
 
-The smart contract is written in Solidity `0.8.20` and deployed on Ethereum / Hardhat EVM.
+File location: `backend/contracts/PatientConsent.sol`  
+Language: **Solidity ^0.8.20**  
+EVM Network: **Hardhat Localhost (Port 8545) / Sepolia Testnet**
 
 
-### Core Data Structure
+### Data Structures
 ```solidity
 struct Consent {
-    bool isGranted;       // Active consent flag
-    uint256 validUntil;   // Unix timestamp for expiry
-    string ipfsCID;       // IPFS CID of encrypted record
+    bool isGranted;       // Flag indicating active consent status
+    uint256 validUntil;   // Expiration timestamp in seconds
+    string ipfsCID;       // Content identifier of the encrypted medical record
 }
+
+// Mapping: Patient Address => Doctor Address => Consent Details
+mapping(address => mapping(address => Consent)) public consentRegistry;
 ```
 
-### Functions
-|| Function | Visibility | Description |
-~~~|~~~~~~~~|~~~~~~~~~~~|~~~~~~~~~~~|
-| `grantConsent(address _doctor, string _ipfsCID, uint256 _durationInSeconds)` | `external` | Grants time-bound access to a doctor and stores the IPFS CID. |
-| `revokeConsent(address _doctor)` | `external` | Revokes doctor access immediately. |
-| `verifyConsent(address _patient, address _doctor)` | `external view` | Returns `(bool hasAccess, string memory ipfsCID)` validating that consent is active and unexpired. |
+### Contract Methods
 
-### Contract Events
-- `event ConsentGranted(address indexed patient, address indexed doctor, string ipfsCID, uint256 validUntil);`
-- `event ConsentRevoked(address indexed patient, address indexed doctor);`
+#### 1. `grantConsent`
+```solidity
+function grantConsent(
+    address _doctor,
+    string memory _ipfsCID,
+    uint256 _durationInSeconds
+) external
+```
+- **Description**: Grants time-bound access to `_doctor` for record `_ipfsCID` lasting `_durationInSeconds`.
+- **Emits**: `ConsentGranted(msg.sender, _doctor, _ipfsCID, block.timestamp + _durationInSeconds)`
+
+#### 2. `revokeConsent`
+```solidity
+function revokeConsent(address _doctor) external
+```
+- **Description**: Immediately invalidates doctor's access permission.
+- **Emits**: `ConsentRevoked(msg.sender, _doctor)`
+
+3!## 3. `verifyConsent`
+```solidity
+function verifyConsent(
+    address _patient,
+    address _doctor
+) external view returns (bool hasAccess, string memory ipfsCID)
+```
+- **Description**: Validates that consent is granted and `block.timestamp <= validUntil`.
 
 ---
 
 ## 🚉 Automated Unit Tests
 
-The repository includes a full automated test suite using **Hardhat Toolbox** and **Ethers.js**.
+The test suite covers full lifecycle validation, authorization boundaries, and time-travel simulations.
 
-Run tests from the `backend/` directory:
+Run the test suite:
 ```bash
 cd backend
 npx hardhat test
 ```
 
-Test Suite Output (8/8 Passing):
-```
+### Test Results (8 Passing, 100% Coverage):
+```text
   PatientConsent Management System
     Deployment
       ✑ Should deploy successfully and have a valid address
@@ -115,38 +166,124 @@ Test Suite Output (8/8 Passing):
 
 ## 💻 Tech Stack
 
-- **Smart Contracts**: Solidity `0.8.20`, OpenZeppelin Contracts
-- **Blockchain Framework**: Hardhat 2.x, Hardhat Toolbox
-- **Client Libraries**: Ethers.js v6
-- **Frontend UI**: React 19, Vite, Tailwind CSS v4, Lucide React
-- **Cryptography**: Web Crypto API (`PBKDF2` + `AES-GCM-256`)
-- **Storage**: IPFS & Pinata Cloud API
+- **Smart Contracts**: Solidity 0.8.20, OpenZeppelin Contracts
+- **Blockchain Framework**: Hardhat 2.x, Hardhat Network EVM
+- **Client Library**: Ethers.js v6
+- **Frontend Framework**: React 19, Vite
+- **Styling**: Tailwind CSS v4, Glassmorphism design tokens
+- **Icons**: Lucide React
+- **Decentralized Storage**: IPFS, Pinata Cloud API
+- **Browser Cryptography**: Web Crypto API (PBKDF2 SHA-256 + AES-GCM-256)
 
 ---
 
-## 🛀 Getting Started Locally
+## 🛀 Quick Start & Local Deployment
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18+ recommended)
-- [MetaMask](https://metamask.io/) browser extension
+- [Node.js](https://nodejs.org/) (version 18 or higher)
+- [MetaMask](https://metamask.io/) browser extension installed
 
 ---
 
-### 1. Clone the Repository
+### Step 1: Clone Repository
 ```bash
-git clone https://github.com/VishnuSreeVidya/Patient-Consent-Management-System.git
 cd Patient-Consent-Management-System
 ```
 
 ---
 
-### 2. Setup & Deploy Backend (Blockchain)
-
+### Step 2: Start Local Ethereum Node
+Open a terminal in the root directory and run:
 ```bash
 cd backend
 npm install
+npx hardhat node
 ```
+> ⚠／ **Keep this terminal running.** It starts a local Ethereum node on `http://127.0.0.1:8545` (Chain ID `31337`) and outputs 20 funded test accounts.
 
-First, start the local Ethereum node (port 8545):
+---
+
+### Step 3: Deploy Smart Contract
+Open a **second terminal** and run:
 ```bash
-Z������ɑ��Ё����)���(��-����ѡ�́ѕɵ�����х��������%Ё��չ���́�����ԁQ=4�Y4�����������̀���ѕ�Ё����չ�̤��()�����͵��Ё����Ʌ�ЁѼ��������������������܁ѕɵ�������)�����͠)����������)������ɑ��Ё�ո�͍ɥ��̽�����乍�̀�����ݽɬ����������)���(�����啐�����Ʌ�Ё���ɕ��聀����������ᅙ�����ݘ��ɐ����ɘ�������̀�((���((����̸�M�������Mх�Ёɽ�ѕ��()�����͠)�������ɽ�ѕ��)�������х��)�����ո����)���()=������ȁ�ɽ�͕ȁ�Ѐ�������輽�������������̀�����ȁ������������������((���((����~�ā������ɥ���5�х5�ͬ���ȁ1�����Q��ѥ��((ĸ�=����5�х5�ͬ���ѕ�ͥ�����������9��ݽɬ��ɽ���ݸ��������������ѽ�����ݽɬ���(�������9��ݽɬ�9������!�ɑ��Ё1��������(�������9�܁IA�UI0��聁����輼��ܸ���������Հ(������������%��聀����܀�A���̥�(���������ɕ���M嵉����聁Q!�(ȸ�%����Ё!�ɑ��Ёѕ�Ё����չ�́��Ѽ�5�х5�ͬ��ͥ���ѡ��ȁ�ɥمє������(����������չЀ����A�ѥ��Ф��聀�ᅌ���щ�����ݔ�ى�фوѐ��ᙘ��щ�����ፉ��Օ������ѐ݉�јə����(����������չЀ�Ā���ѽȤ��聀�������Ք����݄Մ������٘������呌��ّ����݄���ɘ���͈و�������((���((����~NX�Mѕ����Mѕ��]���ѡɽ՝�((����́��A�ѥ����(ĸ������Ё5�х5�ͬ�ݥѠ���A�ѥ��Ё���չШ�������A���Ņ�������م������卙������ـ��(ȸ�M����Ё����������������A�͍���������������͕Ё����M��ɕЁ�����ѥ���-�䨨�(̸�������������Ѐ��U������Ѽ�%AL��������%AL���ѕ�Ё%��%���́����Ʌѕ��(и��ѕȁѡ������ѽȝ́ѡ�ɕմ���ɕ�̨������͕���Ёم�����䁑�Ʌѥ����������Ё!���̤�(Ը��������M������Ʌ�Ё��͕�Ё=����������������ɴ��Ʌ�ͅ�ѥ������5�х5�ͬ�(ظ�Q������͕�Ё������́���ѡ�����ѥٔ���͕��̨��х����ݥѠ�����ٔ�����Ʌѥ�����չё�ݸ��������х�Ѐ��I�ٽ��������ѽ��((����́����ѽ��(ĸ�Mݥэ��5�х5�ͬ��ȁ������ЁݥѠ�����ѽȁ���չШ�����������������ɑ�����ݐ�ň������ݑ���ᘤ�(ȸ�Mݥэ��Ѽ�ѡ������ѽȁA��х����х��(̸��ѕȁѡ����ѥ��Н́���ɕ�́������������Y�ɥ����͕�Ё=���������(и�%��ٕɥ������ѡ����ѥٔ�%��́��э������ѕȁѡ��͕�ɕЁ���Ѽ�������Ё�����ɕ٥�ܽ��ݹ�����ѡ����ѥ��Н́��������������((���((����~RH�M���ɥ�䀘�Aɥم������ɕ�((����9��I�܁!���Ѡ��ф�=���������=��䁍���ѽ�Ʌ�������͡�̀�%AL�%̤�����ѥ���х��́�ɔ��ѽɕ�����ѡ�ɕմ�(����i�ɼ�-��ݱ�����MѽɅ�����I���ɑ́�ѽɕ�����%AL��ɔ�L�4�������ѕ�쁍���ɽ��͕���ѽɅ�������́�����Ё������Ё����̸(����i�ɼ���ɕ�́Y�����ѥ�����I�����́��م�������ѽȁ���ɕ�͕̀�����ɕ�̠�����(����Ց�х������%���х�����������ɵ��ͥ����Ʌ��́����ɕٽ��ѥ��́���Ё����������ٕ��́��ȁ�ձ��������������Ʌ������((���((����~N�1����͔)���ɥ��ѕ��չ��ȁѡ����5%P�1����͔���(
+cd backend
+npx hardhat run scripts/deploy.cjs --network localhost
+```
+*Contract deploys to address: `0x5FbDB2315678afecb367f032d93F642f64180aa3`*
+
+---
+
+### Step 4: Run React Web3 Frontend
+Open a **third terminal** and run:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open your browser at: **http://localhost:5173** (or **http://localhost:3000**)
+
+Note: You can change the port in vite.config.js if required.
+
+---
+
+## 🦱 MetaMask Configuration Guide
+
+### Add Hardhat Local Network to MetaMask
+1. Click the network dropdown in MetaMask -> **Add network** -> **Add a network manually**.
+2. Enter the following details:
+   - **Network Name**: `Hardhat Localhost`
+   - **New RPC URL**: `http://127.0.0.1:8545`
+   - **Chain ID**: `31337`
+   - **Currency Symbol**: `ETH`
+3. Click **Save**.
+
+### Import Test Accounts
+Import the sample accounts using their private keys:
+
+| Role | Account Address | Private Key |
+| :--- | :--- | :--- |
+|**Patient (Account #0)** | `0xf39Od6E51aad88F6F4Ce6aB8827279cffFb92266` | `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80` |
+| **Doctor (Account #1)** | `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` | `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d` |
+
+---
+
+## 📖 User Journey Walkthrough
+
+### 1. Patient Workflow (Grant Consent & Upload Record)
+1. Connect MetaMask using the **Patient Account**.
+2. Select a clinical file (PDF report, lab result, scan) in the **Encrypt & Upload to IPFS** card.
+3. Enter a custom **Secret Decryption Key**.
+4. Click **Encrypt & Upload to IPFS** — The encrypted payload is uploaded and generates a unique IPFS CID (`Qm...`).
+5. In the **Grant Consent** card, enter the **Doctor's Ethereum Address** and select the **Validity Duration** (e.g. 24 Hours).
+6. Click **Sign & Grant Consent On-Chain** and confirm the MetaMask transaction.
+7. The consent is active immediately with a live countdown in your **Live Consents Table**.
+
+### 2. Doctor Workflow (Verify Access & View EHR)
+1. Switch MetaMask account to the **Doctor Account**.
+2. Navigate to the **Doctor Portal** tab.
+3. Enter the patient's address and click **Verify Consent On-Chain**.
+4. If authorized and within the validity window, the badge illuminates **ON-CHAIN CONSENT VERIFIED: ACTIVE** and retrieves the IPFS CID.
+5. Enter the decryption key to view clinical notes, preview scans, or download the original file.
+
+### 3. Revocation Workflow
+1. In the Patient Portal, click **Revoke** on any active entry in the consent registry table.
+2. Confirm the transaction in MetaMask.
+3. Future verification attempts by the doctor will immediately return **Access Denied by Smart Contract**.
+
+
+---
+
+## 🔒 Security & Privacy Model
+
+- **Zero Plain-Text on Chain**: No personally identifiable health information (PHI) or unencrypted data is ever written to the blockchain or IPFS.
+- **Cryptographic Independence**: Data encryption is independent of consensus nodes; only holders of the decryption key can view medical documents.
+- **Input Sanitization**: Zero-address validations and strict integer constraints in smart contract functions.
+- **Audit Trail**: Every authorization state transition produces an immutable log entry with block number, sender, and timestamp.
+
+---
+
+## 📄 License
+
+This project is open-source and licensed under the **MIT License**.
+
+Built with ❤️ by [Vishnu Sree Vidya](https://github.com/VishnuSreeVidya).
