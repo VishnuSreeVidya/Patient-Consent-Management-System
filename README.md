@@ -53,119 +53,227 @@ The **Patient Consent Management System** restores patient data ownership throug
 
 ## System Architecture
 
+```mermaid
+flowchart TD
+    subgraph Patient_Portal [Patient Web3 Portal]
+        A[1. Select Medical Record and Secret Key] --> B[2. Encrypt locally with AES-GCM 256-bit]
+        B --> C[3. Pin Encrypted Record to IPFS]
+    end
+
+    C -->|Stores Encrypted File| IPFS_Vault[(IPFS Decentralized Vault - CID)]
+    C -->|Calls grantConsent doctor, ipfsCID, duration| SmartContract[(Ethereum Smart Contract - PatientConsent.sol)]
+
+    subgraph Doctor_Portal [Doctor Web3 Portal]
+        D[4. Query verifyConsent patient, doctor] --> SmartContract
+        SmartContract -->|5. Returns: hasAccess and ipfsCID| E[6. Retrieve Encrypted File from IPFS]
+        IPFS_Vault -.->|Download Encrypted Blob| E
+        E --> F[7. Decrypt with Securet Key and View EHR]
+    end
+```
+
+---
+
+## Smart Contract Specification
+
+File location: `backend/contracts/PatientConsent.sol`  
+Language: **Solidity ^0.8.20*)  
+EVM Network: **Hardhat Localhost (Port 8545) / Sepolia Testnet**
+
+
+### Data Structures
+```solidity
+struct Consent {
+    bool isGranted;       // Flag indicating active consent status
+    uint256 validUntil;   // Expiration timestamp in seconds
+    string ipfsCID;       // Content identifier of the encrypted medical record
+}
+
+// Mapping: Patient Address => Doctor Address => Consent Details
+mapping(address => mapping(address => Consent)) public consentRegistry;
+```
+
+### Contract Methods
+
+#### 1. grantConsent
+```solidity
+function grantConsent(
+    address _doctor,
+    string memory _ipfsCID,
+    uint256 _durationInSeconds
+) external
+```
+- **Description**: Grants time-bound access to `_doctor` for record `_ipfsCID` lasting `_durationInSeconds`.
+- **Emits**: `ConsentGranted(msg.sender, _doctor, _ipfsCID, block.timestamp + _durationInSeconds)`
+
+#### 2. revokeConsent
+```solidity
+function revokeConsent(address _doctor) external
+```
+- **Description**: Immediately invalidates doctor access permission.
+- **Emits**: `ConsentRevoked(msg.sender, _doctor)`(
+#### 3. verifyConsent
+```solidity
+function verifyConsent(
+    address _patient,
+    address _doctor
+) external view returns (bool hasAccess, string memory ipfsCID)
+```
+- **Description**: Validates that consent is granted and `block.timestamp <= validUntil`.
+
+---
+
+## Automated Unit Tests
+
+The test suite covers full lifecycle validation, authorization boundaries, and time-travel simulations.
+
+Run the test suite:
+```bash
+cd backend
+npx hardhat test
+```
+
+### Test Results (8 Passing, 100% Coverage):
 ```text
-               +--------------------------------------------*UQS��P��ԕS�
-�KKKKKKKKKKKKKKKKKKKKKJ�KKKKKKKKKKKKKKKKKKKKJ�K��[X��[H
-��]�^H��[�ܞ\��[H
-QT�Q��H�M�X�]
-B���
-�KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKJT��T�SH�US�
-�ܙ\�[�ܞ\Y�؈	��Q
-H�
-�KKKKKKKKKKKKKKKKKKKKKJ�KKKKKKKKKKKKKKKKKKKKJ�ˈ�[ܘ[��ۜ�[�
-��܋\���Q\�][ۊH���
-�KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKJUT�USH�PT��ӕ�P��Q�T��H�
-]Y[��ۜ�[����
-H�
-�KKKKKKKKKKKKKKKKKKKKKJ�KKKKKKKKKKKKKKKKKKKKJ���]Y\�H�\�Y�P�ۜ�[�
-]Y[�
-HK��]\��Έ\�X��\��
-�YK٘[�JH	��Q��
-�KKKKKKKKKKKKKKKKKKKKKKJ�KKKKKKKKKKKKKKKKKKKKJ��Ԉ�P��ԕS�
-�[Y]\�X��\��	�Xܞ\��[JH�
-�KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKJ��KKB�����X\��۝�X��X�Y�X�][ۂ���[H��][ێ��X��[���۝�X���]Y[��ۜ�[�����[��XY�N�
-����Y]H����
-���U�H�]�ܚΈ
-��\�]��[��
-ܝMJH��\�XH\��]
-��������]H��X�\�\��Y]B���X��ۜ�[����\�ܘ[�Y����Y�[�X�][��X�]�H�ۜ�[��]\Z[��M��[Y[�[���^\�][ۈ[Y\�[\[��X�ۙ��[��\���Q����۝[�Y[�Y�Y\�وH[�ܞ\YYYX�[�X�ܙ�B����X\[�Έ]Y[�Y�\��O���܈Y�\��O��ۜ�[�]Z[X\[��Y�\��O�X\[��Y�\��O��ۜ�[�
-JHX�X��ۜ�[��Y�\��N������۝�X�Y]������K�ܘ[��ۜ�[����Y]B��[��[ۈܘ[��ۜ�[�
-�Y�\�����܋���[��Y[[ܞH�\���Q�Z[��M��\�][ے[��X�ۙH^\��[��H
-��\�ܚ\[ۊ���ܘ[��[YKX��[�X��\������ܘ�܈�X�ܙ�\���Q\�[���\�][ے[��X�ۙ���H
-��[Z]ʊ���ۜ�[�ܘ[�Y
-\�˜�[�\����܋�\���Q���˝[Y\�[\
-��\�][ے[��X�ۙ�X���������]���P�ۜ�[����Y]B��[��[ۈ�]���P�ۜ�[�
-Y�\�����܊H^\��[��H
-��\�ܚ\[ۊ���[[YYX][H[��[Y]\���܈X��\��\�Z\��[ۋ��H
-��[Z]ʊ���ۜ�[��]���Y
-\�˜�[�\����܊X
-�����ˈ�\�Y�P�ۜ�[����Y]B��[��[ۈ�\�Y�P�ۜ�[�
-�Y�\���]Y[��Y�\�����܂�H^\��[�Y]��]\���
-���\�X��\����[��Y[[ܞH\���Q
-B��H
-��\�ܚ\[ۊ����[Y]\�]�ۜ�[�\�ܘ[�Y[����˝[Y\�[\H�[Y[�[���KKB����]]�X]Y[�]\��H\��Z]H�ݙ\���[Y�X�X�H�[Y][ۋ]]ܚ^�][ۈ��[�\�Y\�[�[YK]�]�[�[][][ۜ˂���[�H\��Z]N���\����X��[���\�]\�������\��\�[�
-\��[��L	H�ݙ\�Y�JN��^�]Y[��ۜ�[�X[�Y�[Y[��\�[B�\�[Y[���T��H��[\�H�X��\�ٝ[H[�]�HH�[YY�\�ܘ[��ۜ�[���T��H��[[��H]Y[��ܘ[��ۜ�[�[�[Z]�ۜ�[�ܘ[�Y]�[���T��H��[�Z�X�ܘ[�[���ۜ�[��Y�\��
-B��\�Y�H�ۜ�[���T��H��[�\�Y�HX�]�H�ۜ�[��܈]]ܚ^�Y��܂��T��H��[[�HX��\���[�]]ܚ^�Y��܂��T��H��[[�HX��\���[��ۜ�[�^\�\�Y�\�\�][ۂ��]���H�ۜ�[���T��H��[[��]Y[���]���H�ۜ�[�[�[Z]�ۜ�[��]���Y]�[���T��H��[�Z�X��]���[���ۜ�[��܈Y�\��
-B��\��[��
-\�B���KKB����X��X��H
-���X\��۝�X�ʊ����Y]H����[��\[[��۝�X�H
-�������Z[���[Y]�ܚʊ��\�]��\�]�]�ܚ�U�B�H
-���Y[�X��\�J���]\�˚�����H
-����۝[���[Y]�ܚʊ���XX�NK�]B�H
-���[[�ʊ��Z[�[������\��[ܜ\�H\�Yۈ��[�H
-��X�ۜʊ��X�YH�XX��H
-��X�[��[^�Y�ܘY�J���T��[�]H��YTB�H
-�������\�ܞ\�ܘ\J����X�ܞ\�TH
-�����KL�M�
-�QT�Q��KL�M�B��KKB����]ZX���\�[���[\�[Y[�������\�\]Z\�]\Hӛ�K���J΋�ۛ�Z�˛ܙ��H
-�\��[ۈN܈Y�\�B�H�Y]SX\��J΋��Y][X\�˚[��H�����\�^[��[ۈ[��[Y��KKB������\N��ۙH�\��]ܞB��\���]Y[�P�ۜ�[�SX[�Y�[Y[�T�\�[B���KKB������\���\���[]\�][H��B��[�H\�Z[�[[�H���\�X�ܞH[��[����\����X��[���H[��[��\�]��B���
-����N����Y\\�\�Z[�[�[��[�ˈ]�\��H��[]\�][H��Hۈ���L�ˌ��N�MX
-�Z[�Q�L���H[��]]���[�Y\�X���[�˂��KKB������\Έ\�H�X\��۝�X���[�H
-���X�ۙ\�Z[�[
-��[��[����\����X��[���\�]�[��ܚ\��\�K�ڜ�K[�]�ܚ���[������۝�X�\�\��Y�\�ΈQ�����MM��Y�X،ٌ͍̙Lэ����NXL�
-���KKB������\��[��XX��X����۝[���[�H
-��\�\�Z[�[
-��[��[����\�����۝[���H[��[��H�[�]����[�[�\������\�]�
-�������[���LM�ʊ�
-܈
-�������[����
-��B����N�[�H�[��[��HHܝ[��]K��ۙ�Y˚��Y��\]Z\�Y���KKB����Y]SX\���ۙ�Y�\�][ۈ�ZYB�����Y\�]��[�]�ܚ��Y]SX\�K��X��H�]�ܚ����ۈ[�Y]SX\��O�
-��Y�]�ܚʊ�O�
-��YH�]�ܚ�X[�X[J�����[�\�H����[��]Z[΂�H
-���]�ܚ��[YJ���\�]��[���H
-���]���T�
-������L�ˌ��N�MX�H
-���Z[�Q
-����L����H
-���\��[��H�[X��
-���U�ˈ�X��
-���]�J��������[\ܝ\�X���[�[\ܝH�[\HX���[��\�[��Z\��]�]H�^\΂����HX���[�Y�\���]�]H�^H��KKH�KKH�KKH�
-��]Y[�
-X���[��
-J����S��MLXXY����M�P��̍�Xٙ���L����X�M��X��XLM�L͘�MM������M�X؍�ؙYYY��YM�ؙ������
-����܈
-X���[��JJ���NM�M��LNL���LL��X�LLM���P�NX͎NMYNNN�M�MXLM���ML�Y�YN�YN��NL���؍����L��KKB����\�\���\��^H�[���Y������K�]Y[��ܚٛ��
-ܘ[��ۜ�[�[�\�Y�X�ܙ
-B�K��ۛ�X�Y]SX\��\�[��H
-��]Y[�X���[�
-�������[X�H�[�X�[�[H
-��\ܝX��\�[��[�H[�H
-��[�ܞ\	�\�Y�T�ʊ��\���ˈ[�\�H�\��H
-���Xܙ]Xܞ\[ۈ�^J������X��
-��[�ܞ\	�\�Y�T�ʊ�HH[�ܞ\Y^[�Y\�\�YY[��[�\�]\�H[�\]YHT���Q
-[K���
-K��K�[�H
-��ܘ[��ۜ�[�
-���\�[�\�H
-����܈]\�][HY�\�ʊ�[��[X�H
-���[Y]H\�][ۊ��
-K�ˈ��\��K�����X��
-���Yۈ	�ܘ[��ۜ�[�ۋP�Z[���[��ۙ�\�HHY]SX\���[��X�[ۋ��ˈH�ۜ�[�\�X�]�H[[YYX][H�]H]�H��[��ۈ[�[�\�
-��]�H�ۜ�[��X�J������������܈�ܚٛ��
-�\�Y�HX��\��[��Y]�R�B�K���]�Y]SX\��X���[��H
-����܈X���[�
-�������]�Y�]H�H
-����܈ܝ[
-��X���ˈ[�\�H]Y[�Y�\��[��X��
-���\�Y�H�ۜ�[�ۋP�Z[������Y�]]ܚ^�Y[��][�H�[Y]H�[���H�Y�H[[Z[�]\�
-��ӋP�RS��Ӕ�S��T�Q�QQ�P�U�J��[��]�Y]�\�HT���Q��K�[�\�HXܞ\[ۈ�^H��Y]��[�X�[��\��]�Y]���[��܈�ۛ�YHܚY�[�[�[K������ˈ�]���][ۈ�ܚٛ�K�[�H]Y[�ܝ[�X��
-���]���J��ۈ[�HX�]�H[��H[�H�ۜ�[��Y�\��HX�K�����ۙ�\�HH�[��X�[ۈ[�Y]SX\�˂�ˈ�]\�H�\�Y�X�][ۈ][\��HH��܈�[[[YYX][H�]\��
-��X��\��[�YY�H�X\��۝�X�
-������KKB�����X�\�]H[��]�X�H[�[��H
-���\��Z[�U^ۈ�Z[������\��ۘ[HY[�Y�XX�HX[[��ܛX][ۈ
-JH܈[�[�ܞ\Y]H\�]�\�ܚ][��H�����Z[�܈T�˂�H
-��ܞ\�ܘ\X�[�\[�[��J���]H[�ܞ\[ۈ\�[�\[�[�و�ۜ�[��\���\��ۛH�\��وHXܞ\[ۈ�^H�[��Y]�YYX�[��[Y[�˂�H
-��[�]�[�]^�][ۊ����\��XY�\���[Y][ۜ�[���X�[�Y�\��ۜ��Z[��[��X\��۝�X��[��[ۜ˂�H
-��]Y]�Z[
-���]�\�H]]ܚ^�][ۈ�]H�[��][ۈ��X�\�[�[[]]X�H��[��H�]�����[X�\��[�\�[�[Y\�[\���KKB����X�[��B��\��ڙX�\��[�\��\��H[�X�[��Y[�\�H
-��RUX�[��J������Z[�H՚\��HܙYH�YXWJ΋���]X����K՚\��TܙYU�YXJK�
+  PatientConsent Management System
+    Deployment
+      [PASS] Should deploy successfully and have a valid address
+    Grant Consent
+      [PASS] Should allow a patient to grant consent and emit ConsentGranted event
+      [PASS] Should reject granting consent to address(0)
+    Verify Consent
+      [PASS] Should verify active consent for authorized doctor
+      [PASS] Should deny access to unauthorized doctor
+      [PASS] Should deny access when consent expires after duration
+    Revoke Consent
+      [PASS] Should allow patient to revoke consent and emit ConsentRevoked event
+      [PASS] Should reject revoking consent for address(0)
+
+  8 passing (1s)
+```
+
+---
+
+## Tech Stack
+
+- **Smart Contracts**: Solidity 0.8.20, OpenZeppelin Contracts
+- **Blockchain Framework**: Hardhat 2.x, Hardhat Network EVM
+- **Client Library**: Ethers.js v6
+- **Frontend Framework**: React 19, Vite
+- **Styling**: Tailwind CSS v4, Glassmorphism design tokens
+- **Icons**: Lucide React
+- **Decentralized Storage**: IPFS, Pinata Cloud API
+- **Browser Cryptography**: Web Crypto API (PBKDF2 SHA-256 + AES-GCM-256)
+
+---
+
+## Quick Start and Local Deployment
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) (version 18 or higher)
+- [MetaMask](https://metamask.io/) browser extension installed
+
+---
+
+### Step 1: Clone Repository
+```bash
+cd Patient-Consent-Management-System
+```
+
+---
+
+### Step 2: Start Local Ethereum Node
+Open a terminal in the root directory and run:
+```bash
+cd backend
+npm install
+npx hardhat node
+```
+> **Note:** Keep this terminal running. It starts a local Ethereum node on `http://127.0.0.1:8545` (Chain ID  31337) and outputs 20 funded test accounts.
+
+---
+
+### Step 3: Deploy Smart Contract
+Open a **second terminal** and run:
+```bash
+cd backend
+npx hardhat run scripts/deploy.cjs --network localhost
+```
+*Contract deploys to address: `0x5FbDB2315678afecb367f032d93F642f64180aa3`*
+
+---
+
+### Step 4: Run React Web3 Frontend
+Open a **third terminal** and run:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open your browser at: **http://localhost:5173** (or **http://localhost:3000**)
+
+Note: You can change the port in vite.config.js if required.
+
+---
+
+## MetaMask Configuration Guide
+
+### Add Hardhat Local Network to MetaMask
+1. Click the network dropdown in MetaMask -> **Add network** -> **Add a network manually**
+2. Enter the following details:
+   - **Network Name**: `Hardhat Localhost`
+   - **New RPC URL**: `http://127.0.0.1:8545`
+   - **Chain ID**: `31337`
+   - **Currency Symbol**: `ETH`
+3. Click **Save**.
+
+### Import Test Accounts
+Import the sample accounts using their private keys:
+
+| Role | Account Address | Private Key |
+| :--- | :--- | :--- |
+|**Patient (Account #0)** | `0xf39Od6E51aad88F6F4Ce6aB8827279cffFb92266` | `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80` |
+| **Doctor (Account #1)** | `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` | `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d` |
+
+---
+
+## User Journey Walkthrough
+
+### 1. Patient Workflow (Grant Consent and Upload Record)
+1. Connect MetaMask using the **Patient Account**.
+2. Select a clinical file (PDF report, lab result, scan) in the **Encrypt & Upload to IPFS** card.
+3. Enter a custom **Secret Decryption Key**.
+4. Click **Encrypt & Upload to IPFS** - The encrypted payload is uploaded and generates a unique IPFS CID (`Qm...`).
+5. In the **Grant Consent** card, enter the **Doctor Ethereum Address** and select the **Validity Duration** (e.g. 24 Hours).
+6. Click **Sign & Grant Consent On-Chain** and confirm the MetaMask transaction.
+7. The consent is active immediately with a live countdown in your **Live Consents Table**
+
+
+### 2. Doctor Workflow (Verify Access and View EHR)
+1. Switch MetaMask account to the **Doctor Account**.
+2. Navigate to the **Doctor Portal** tab.
+3. Enter the patient address and click **Verify Consent On-Chain**.
+4. If authorized and within the validity window, the badge illuminates **ON-CHAIN CONSENT VERIFIED: ACTIVE** and retrieves the IPFS CID\n.5. Enter the decryption key to view clinical notes, preview scans, or download the original file.
+
+### 3. Revocation Workflow
+1. In the Patient Portal, click **Revoke** on any active entry in the consent registry table.
+2. Confirm the transaction in MetaMask.
+3. Future verification attempts by the doctor will immediately return **Access Denied by Smart Contract**.
+
+
+---
+
+## Security and Privacy Model
+
+- **Zero Plain-Text on Chain**: No personally identifiable health information (PHI) or unencrypted data is ever written to the blockchain or IPFS.
+- **Cryptographic Independence**: Data encryption is independent of consensus nodes; only holders of the decryption key can view medical documents.
+- **Input Sanitization**: Zero-address validations and strict integer constraints in smart contract functions.
+- **Audit Trail**: Every authorization state transition produces an immutable log entry with block number, sender, and timestamp.
+
+---
+
+## License
+
+This project is open-source and licensed under the **MIT License**.
+
+Built by [Vishnu Sree Vidya](https://github.com/VishnuSreeVidya).
