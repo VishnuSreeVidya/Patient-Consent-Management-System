@@ -128,8 +128,8 @@ export default function PatientPortal({ contract, account, onTransactionSuccess,
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg_col-span-6 glass-card p-6 rounded-2xl flex flex-col justify-between">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="lg:col-span-6 glass-card p-6 rounded-2xl flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-4">
               <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-300 font-bold text-xs flex items-center justify-center border border-cyan-500/30">1</span>
@@ -192,7 +192,7 @@ export default function PatientPortal({ contract, account, onTransactionSuccess,
           )}
         </div>
 
-        <div className="lg_col-span-6 glass-card p-6 rounded-2xl flex flex-col justify-between">
+        <div className="lg:col-span-6 glass-card p-6 rounded-2xl flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-4">
               <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-300 font-bold text-xs flex items-center justify-center border border-blue-500/30">2</span>
