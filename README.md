@@ -133,6 +133,20 @@ In sudden life-threatening trauma situations where a patient is incapacitated:
 - Visual status indicators distinguishing standard consent grants, manual revocations, and high-priority ER break-glass events.
 - Displays transaction hashes linking to block explorers.
 
+### 6. Multi-Record Patient Health Vault
+- Persistent client-side repository for managing multiple medical records (e.g. ECGs, blood tests, radiology scans).
+- Interactive category filter tabs (`All`, `General`, `Prescriptions`, `LabTests`, `Radiology`, `Sensitive`).
+- 1-Click *"Use in Consent"* flow that auto-populates CIDs and category parameters directly into the on-chain grant form.
+
+### 7. Cryptographic Compliance & Consent Certificate (PDF / Print)
+- In-app generation of formal, HIPAA-aligned **Web3 Medical Authorization Certificates**.
+- Details on-chain transaction hashes, block timestamps, doctor/patient addresses, and verification seals.
+- Built-in print engine (`window.print()`) formatted for 1-click PDF export and clinical auditing.
+
+### 8. High-Priority Emergency ER Alert Banner
+- Real-time detection of emergency break-glass invocations on the patient's record.
+- Prominent red alert banner displaying doctor address, timestamp, and clinical justification with one-click audit certificate generation and patient acknowledgment.
+
 ---
 
 ## Smart Contract Specification
