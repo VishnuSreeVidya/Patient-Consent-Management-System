@@ -1,5 +1,6 @@
 ﻿import React, { useState } from 'react';
-import { Stethoscope, ShieldCheck, ShieldAlert, Unlock, FileText, Download, Eye, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Stethoscope, ShieldCheck, ShieldAlert, Unlock, FileText, Download, Eye, X, ZoomIn, ZoomOut, Award } from 'lucide-react';
+import ConsentCertificateModal from './ConsentCertificateModal';
 import { decryptMedicalRecord } from '../services/ipfs';
 import { RECORD_CATEGORIES } from '../contracts/contractConfig';
 
@@ -22,6 +23,7 @@ export default function DoctorPortal({
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [emergencyReason, setEmergencyReason] = useState('Critical ER Trauma - Patient Unconscious');
   const [triggeringEmergency, setTriggeringEmergency] = useState(false);
+  const [certModalOpen, setCertModalOpen] = useState(false);
 
   const handleVerifyConsent = async (e) => {
     e.preventDefault();
@@ -174,6 +176,18 @@ export default function DoctorPortal({
                   <p className="text-xs font-mono text-cyan-300 truncate">{verificationResult.ipfsCID}</p>
                 </div>
               )}
+
+              {verificationResult.hasAccess && (
+                <div className="mt-3 pt-3 border-t border-slate-800 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setCertModalOpen(true)}
+                    className="px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                  >
+                    <Award className="w-3.5 h-3.5" /> View Compliance Certificate
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -306,6 +320,19 @@ export default function DoctorPortal({
           </div>
         </div>
       )}
+
+      {/* Compliance Certificate Modal */}
+      <ConsentCertificateModal
+        isOpen={certModalOpen}
+        onClose={() => setCertModalOpen(false)}
+        certificateData={{
+          patient: patientAddress,
+          doctor: account,
+          category: verificationResult?.category || 0,
+          ipfsCID: verificationResult?.ipfsCID,
+          validUntil: null
+        }}
+      />
 
       {/* 4. Emergency Break-Glass Modal */}
       {showEmergencyModal && (

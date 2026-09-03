@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { ShieldCheck, UploadCloud, Key, Clock, Trash2, Lock, FileText, ShieldAlert } from 'lucide-react';
+import { ShieldCheck, UploadCloud, Key, Clock, Trash2, Lock, FileText, ShieldAlert, Award, AlertTriangle, Database, ArrowRight } from 'lucide-react';
+import ConsentCertificateModal from './ConsentCertificateModal';
 import { encryptMedicalRecord } from '../services/ipfs';
 import { RECORD_CATEGORIES } from '../contracts/contractConfig';
 
@@ -25,6 +26,13 @@ export default function PatientPortal({
   const [emergencyLogs, setEmergencyLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
 
+  // Vault & Certificate & Alert states
+  const [vaultRecords, setVaultRecords] = useState([]);
+  const [vaultCategoryFilter, setVaultCategoryFilter] = useState('ALL');
+  const [certModalOpen, setCertModalOpen] = useState(false);
+  const [activeCertData, setActiveCertData] = useState(null);
+  const [emergencyAlertDismissed, setEmergencyAlertDismissed] = useState(false);
+
   const PRESET_DOCTORS = [
     { label: 'Doctor #1 (Cardiology)', addr: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8' },
     { label: 'Doctor #2 (Radiology)', addr: '0x90F79bf6Eb2c4E8a895F1297be8883876E539771' },
@@ -39,6 +47,39 @@ export default function PatientPortal({
           setConsentsList(JSON.parse(stored));
         } catch (e) {}
       }
+
+      const storedVault = localStorage.getItem('med_vault_' + account.toLowerCase());
+      if (storedVault) {
+        try {
+          setVaultRecords(JSON.parse(storedVault));
+        } catch (e) {}
+      } else {
+        const defaultVault = [
+          {
+            id: 'rec_1',
+            fileName: 'Cardiology ECG Scan & Vitals.pdf',
+            docType: 'Clinical Note',
+            clinicalNotes: 'Resting ECG normal. Blood pressure 120/80 mmHg.',
+            ipfsCID: 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco',
+            category: 0,
+            timestamp: Date.now() - 86400000 * 2,
+            secretKey: 'MedConsent_2026!Secure'
+          },
+          {
+            id: 'rec_2',
+            fileName: 'Comprehensive Metabolic Panel (CMP).pdf',
+            docType: 'Lab Report',
+            clinicalNotes: 'Standard blood work panel. Fasting glucose normal.',
+            ipfsCID: 'QmZ4tDuvesekSs4qM5ZBKpXiZGun7S2CYtEZRB3DYXkjGx',
+            category: 2,
+            timestamp: Date.now() - 86400000,
+            secretKey: 'MedConsent_2026!Secure'
+          }
+        ];
+        setVaultRecords(defaultVault);
+        localStorage.setItem('med_vault_' + account.toLowerCase(), JSON.stringify(defaultVault));
+      }
+
       fetchEmergencyLogs();
     }
   }, [account, contract]);
@@ -84,12 +125,72 @@ export default function PatientPortal({
         selectedCategory
       );
       setIpfsCID(result.ipfsCID);
-      showToast('Record Encrypted & Pinned to IPFS! CID: ' + result.ipfsCID.substring(0, 12) + '...', 'success');
+
+      // Save to medical vault
+      const newVaultItem = {
+        id: 'rec_' + Date.now(),
+        fileName: selectedFile ? selectedFile.name : (docType + ' - ' + new Date().toLocaleDateString()),
+        docType,
+        clinicalNotes,
+        ipfsCID: result.ipfsCID,
+        category: selectedCategory,
+        timestamp: Date.now(),
+        secretKey
+      };
+      const updatedVault = [newVaultItem, ...vaultRecords];
+      setVaultRecords(updatedVault);
+      if (account) {
+        localStorage.setItem('med_vault_' + account.toLowerCase(), JSON.stringify(updatedVault));
+      }
+
+      showToast('Record Encrypted & Saved to Vault! CID: ' + result.ipfsCID.substring(0, 12) + '...', 'success');
     } catch (err) {
       showToast('Encryption Failed: ' + err.message, 'error');
     } finally {
       setEncrypting(false);
     }
+  };
+
+  const handleSelectFromVault = (record) => {
+    setIpfsCID(record.ipfsCID);
+    setSelectedCategory(record.category);
+    setDocType(record.docType);
+    if (record.secretKey) setSecretKey(record.secretKey);
+    showToast('Loaded ' + record.fileName + ' into Consent Form', 'info');
+  };
+
+  const handleDeleteFromVault = (id) => {
+    const updated = vaultRecords.filter(r => r.id !== id);
+    setVaultRecords(updated);
+    if (account) {
+      localStorage.setItem('med_vault_' + account.toLowerCase(), JSON.stringify(updated));
+    }
+    showToast('Record removed from vault', 'info');
+  };
+
+  const openCertificate = (consentItem) => {
+    setActiveCertData({
+      patient: account,
+      doctor: consentItem.doctor,
+      category: consentItem.category,
+      ipfsCID: consentItem.ipfsCID,
+      validUntil: consentItem.validUntil,
+      isEmergency: false
+    });
+    setCertModalOpen(true);
+  };
+
+  const openEmergencyCertificate = (log) => {
+    setActiveCertData({
+      patient: account,
+      doctor: log.doctor,
+      category: 0,
+      ipfsCID: 'EMERGENCY_ER_OVERRIDE',
+      validUntil: null,
+      isEmergency: true,
+      reason: log.reason
+    });
+    setCertModalOpen(true);
   };
 
   const handleGrantConsent = async (e) => {
@@ -165,8 +266,50 @@ export default function PatientPortal({
     return { label: m + 'm ' + s + 's left', isExpired: false };
   };
 
+  const filteredVault = vaultCategoryFilter === 'ALL'
+    ? vaultRecords
+    : vaultRecords.filter(r => r.category === Number(vaultCategoryFilter));
+
   return (
     <div className="space-y-8">
+      {/* High-Priority Emergency Alert Banner */}
+      {emergencyLogs.length > 0 && !emergencyAlertDismissed && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-red-500/20 via-red-600/15 to-amber-500/10 border-2 border-red-500/40 shadow-xl shadow-red-500/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 shrink-0">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-red-500 text-white font-extrabold text-[10px] tracking-wider uppercase">
+                  Emergency ER Alert
+                </span>
+                <p className="text-xs font-bold text-red-200">
+                  {emergencyLogs.length} Emergency Break-Glass Access Event Recorded
+                </p>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                Doctor <span className="font-mono text-cyan-300">{emergencyLogs[0].doctor.substring(0, 10)}...</span> accessed your EHR citing: <span className="italic text-red-200 font-medium">"{emergencyLogs[0].reason}"</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => openEmergencyCertificate(emergencyLogs[0])}
+              className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/40 text-xs font-semibold flex items-center gap-1 transition-all"
+            >
+              <Award className="w-3.5 h-3.5" /> View Audit Cert
+            </button>
+            <button
+              onClick={() => setEmergencyAlertDismissed(true)}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all"
+            >
+              Acknowledge
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="glass-panel p-6 rounded-2xl relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -337,16 +480,103 @@ export default function PatientPortal({
                 </div>
               </div>
 
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-[11px]">
+                <span className="text-slate-400">Estimated Network Fee:</span>
+                <span className="font-mono text-emerald-400 font-semibold">~0.00032 ETH ($1.05 USD)</span>
+              </div>
+
               <button
                 type="submit"
                 disabled={granting}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-sm font-semibold shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50"
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-sm font-semibold shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {granting ? 'Signing Transaction...' : 'Sign & Grant Consent On-Chain'}
+                {granting ? 'Signing Transaction via MetaMask...' : 'Sign & Grant Consent On-Chain'}
               </button>
             </form>
           </div>
         </div>
+      </div>
+
+      {/* ?? Patient Medical Vault Section */}
+      <div className="glass-panel p-6 rounded-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-lg font-bold text-slate-100">My Health Records Vault</h3>
+            <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-semibold text-xs">
+              {vaultRecords.length} Saved
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <button
+              onClick={() => setVaultCategoryFilter('ALL')}
+              className={'px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ' + 
+                (vaultCategoryFilter === 'ALL' 
+                  ? 'bg-cyan-500 text-white' 
+                  : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800')
+              }
+            >
+              All
+            </button>
+            {RECORD_CATEGORIES.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setVaultCategoryFilter(String(cat.id))}
+                className={'px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ' + 
+                  (vaultCategoryFilter === String(cat.id) 
+                    ? 'bg-cyan-500 text-white' 
+                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800')
+                }
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredVault.length === 0 ? (
+          <p className="text-sm text-slate-500 py-6 text-center">No records in this category. Upload records to your private vault above.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredVault.map((record) => {
+              const cat = RECORD_CATEGORIES[record.category] || RECORD_CATEGORIES[0];
+              return (
+                <div key={record.id} className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/40 transition-all flex flex-col justify-between group">
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className={'px-2 py-0.5 rounded text-[10px] font-semibold border ' + (cat.bg || 'bg-slate-800') + ' ' + (cat.text || 'text-slate-300') + ' ' + (cat.border || 'border-slate-700')}>
+                        {cat.label}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {new Date(record.timestamp).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-200 truncate">{record.fileName}</h4>
+                    <p className="text-xs text-slate-400 mt-1 line-clamp-2">{record.clinicalNotes}</p>
+                    <p className="text-[10px] font-mono text-cyan-400/80 mt-2 truncate">CID: {record.ipfsCID}</p>
+                  </div>
+
+                  <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => handleSelectFromVault(record)}
+                      className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1 transition-all"
+                    >
+                      Use in Consent <ArrowRight className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteFromVault(record.id)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      title="Delete from Vault"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 3. Active Consents Registry Table */}
@@ -369,7 +599,7 @@ export default function PatientPortal({
                   <th className="py-3 px-4">Category</th>
                   <th className="py-3 px-4">IPFS CID</th>
                   <th className="py-3 px-4">Status & Validity</th>
-                  <th className="py-3 px-4 text-right">Action</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -403,16 +633,25 @@ export default function PatientPortal({
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        {isActive && (
+                        <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => handleRevokeConsent(item.doctor)}
-                            disabled={revokingAddr === item.doctor}
-                            className="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1.5 ml-auto"
+                            onClick={() => openCertificate(item)}
+                            className="px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1 transition-all"
+                            title="View Cryptographic Certificate"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            {revokingAddr === item.doctor ? 'Revoking...' : 'Revoke'}
+                            <Award className="w-3.5 h-3.5" /> Certificate
                           </button>
-                        )}
+                          {isActive && (
+                            <button
+                              onClick={() => handleRevokeConsent(item.doctor)}
+                              disabled={revokingAddr === item.doctor}
+                              className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-all disabled:opacity-50 flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              {revokingAddr === item.doctor ? 'Revoking...' : 'Revoke'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -452,12 +691,27 @@ export default function PatientPortal({
                   </div>
                   <p className="text-xs text-slate-400 mt-1">Justification: <span className="text-slate-200 font-medium">{log.reason}</span></p>
                 </div>
-                <span className="text-[0.65rem] text-slate-500 font-mono">{new Date(log.timestamp).toLocaleString()}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[0.65rem] text-slate-500 font-mono">{new Date(log.timestamp).toLocaleString()}</span>
+                  <button
+                    onClick={() => openEmergencyCertificate(log)}
+                    className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-[11px] font-semibold flex items-center gap-1 transition-all"
+                  >
+                    <Award className="w-3 h-3" /> Audit Cert
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Cryptographic Compliance Certificate Modal */}
+      <ConsentCertificateModal
+        isOpen={certModalOpen}
+        onClose={() => setCertModalOpen(false)}
+        certificateData={activeCertData}
+      />
     </div>
   );
 }
