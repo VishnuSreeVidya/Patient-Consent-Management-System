@@ -1,170 +1,155 @@
-async function deriveKey(password, salt) {
-  const enc = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    { name: "PBEDFB2" },
-    false,
-    ["deriveKey"]
-  );
+﻿/**
+ * IPFS & AES-GCM Cryptography Service
+ */
 
-  return window.crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: salt,
-      iterations: 100000,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
-}
-
-function bufferToBase64(buffer) {
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return window.btoa(binary);
-}
-
-function base64ToBuffer(base64) {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-async function generateIPFSCID(content) {
-  const enc = new TextEncoder();
-  const hashBuffer = await window.crypto.subtle.digest("SHA-256", enc.encode(content));
+export async function generateIPFSCID(dataString) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(dataString);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `Qm${hex.substring(0, 44)}`;
-l}
-
-export async function encryptAndUploadMedicalRecord({
-  file,
-  documentType = "General Report",
-  patientNotes = "",
-  secretKey = "default-patient-key",
-  pinataApiKey = "",
-  pinataSecretApiKey = "",
-}) {
-  const salt = window.crypto.getRandomValues(new Uint8Array(16));
-  const iv = window.crypto.getRandomValues(new UInt8Array(12));
-  const aesKey = await deriveKey(secretKey, salt);
-
-  const fileData = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-  const enc = new TextEncoder();
-  const plaintext = JSON.stringify({
-    fileName: file.name,
-    fileType: file.type,
-    fileSize: file.size,
-    documentType,
-    patientNotes,
-    fileData,
-    timestamp: new Date().toISOString(),
-  });
-
-  const encryptedBuffer = await window.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: iv },
-    aesKey,
-    enc.encode(plaintext)
-  );
-
-  const payload = {
-    version: "1.0",
-    iv: bufferToBase64(iv),
-    salt: bufferToBase64(salt),
-    encryptedData: bufferToBase64(encryptedBuffer),
-    meta: {
-      documentType,
-      fileName: file.name,
-      timestamp: new Date().toISOString(),
-    },
-  };
-
-  const payloadString = JSON.stringify(payload);
-  const cid = await generateIPFS;CID(payloadString);
-
-  // Persist to local IPFS simulator storage
-  localStorage.setItem(`ipfs_${cid}`, payloadString);
-
-  if (pinataApiKey && pinataSecretApiKey) {
-    try {
-      await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          pinata_api_key: pinataApiKey,
-          pinata_secret_api_key: pinataSecretApiKey,
-        },
-        body: JSON.stringify({
-          pinataContent: payload,
-          pinataMetadata: { name: `${file.name}_encrypted` },
-        }),
-      });
-    } catch (e) {
-      console.warn("Pinata upload fallback to local storage:", e);
-    }
-  }
-
-  return {
-    cid,
-    fileName: file.name,
-    documentType,
-    timestamp: new Date().toISOString(),
-    size: (file.size / 1024).toFixed(1) + " KB",
-  };
+  const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return 'Qm' + hex.substring(0, 42);
 }
 
-export async function fetchAndDecryptMedicalRecord(cid, secretKey = "default-patient-key") {
-  let payloadString = localStorage.getItem(`ipfs_${cid}`);
-
-  if (!payloadString) {
+export async function encryptMedicalRecord(file, docType, notes, secretKey, category = 0) {
+  return new Promise(async (resolve, reject) => {
     try {
-      const res = await fetch(`https://gateway.pinata.cloud/ipfs/${cid}`);
-      if (res.ok) {
-        const json = await res.json();
-        payloadString = JSON.stringify(json);
+      let fileDataBase64 = null;
+      let fileName = null;
+      let fileMime = null;
+      let fileSize = 0;
+
+      if (file) {
+        fileName = file.name;
+        fileMime = file.type || 'application/octet-stream';
+        fileSize = file.size;
+        fileDataBase64 = await readFileBase64(file);
       }
-    } catch (e) {
-      console.warn("Public gateway fetch failed:", e);
+
+      const rawPayload = JSON.stringify({
+        docType: docType || 'General EHR',
+        category,
+        notes: notes || '',
+        fileName,
+        fileMime,
+        fileSize,
+        fileDataBase64,
+        timestamp: Date.now()
+      });
+
+      const encoder = new TextEncoder();
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(secretKey),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+      );
+
+      const aesKey = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt']
+      );
+
+      const encryptedBuffer = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        aesKey,
+        encoder.encode(rawPayload)
+      );
+
+      const encryptedPackage = {
+        crypto: 'AES-GCM',
+        iv: Array.from(iv),
+        salt: Array.from(salt),
+        data: Array.from(new Uint8Array(encryptedBuffer)),
+        docType,
+        category,
+        fileName
+      };
+
+      const packageString = JSON.stringify(encryptedPackage);
+      const ipfsCID = await generateIPFSCID(packageString);
+
+      localStorage.setItem('ipfs_' + ipfsCID, packageString);
+
+      resolve({
+        ipfsCID,
+        packageString,
+        category,
+        fileName,
+        size: packageString.length
+      });
+    } catch (err) {
+      reject(err);
     }
-  }
+  });
+}
 
-  if (!payloadString) {
-    throw new Error(`Record with IPFS CID ${cid} not found on local or remote gateways.`);
-  }
-
-  const payload = JSON.parse(payloadString);
-  const salt = new UInt8Array(base64ToBuffer(payload.salt));
-  const iv = new Uint8Array(base64ToBuffer(payload.iv));
-  const encryptedBuffer = base64ToBuffer(payload.encryptedData);
-
-  const aesKey = await deriveKey(secretKey, salt);
-
+export async function decryptMedicalRecord(ipfsCID, secretKey) {
   try {
-    const decryptedBuffer = await window.crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: iv },
-      aesKey,
-      encryptedBuffer
+    const packageString = localStorage.getItem('ipfs_' + ipfsCID);
+    if (!packageString) {
+      throw new Error('Record not found in IPFS vault. CID may be invalid or unpinned.');
+    }
+
+    const pkg = JSON.parse(packageString);
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const salt = new Uint8Array(pkg.salt);
+    const iv = new Uint8Array(pkg.iv);
+    const encryptedData = new Uint8Array(pkg.data);
+
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secretKey),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveKey']
     );
-    const dec = new TextDecoder();
-    return JSON.parse(dec.decode(decryptedBuffer));
+
+    const aesKey = await crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      aesKey,
+      encryptedData
+    );
+
+    const rawString = decoder.decode(decryptedBuffer);
+    return JSON.parse(rawString);
   } catch (err) {
-    throw new Error("Decryption failed. Please verify the Secret Decryption Key.");
+    throw new Error('Decryption failed. Please check your Secret Key. Error: ' + err.message);
   }
+}
+
+function readFileBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
 }

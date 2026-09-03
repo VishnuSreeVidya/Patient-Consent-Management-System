@@ -83,15 +83,25 @@ export default function App() {
 
   const setupEventListeners = (contractInstance) => {
     try {
-      contractInstance.on('ConsentGranted', (patient, doctor, ipfsCID, validUntil, event) => {
+      contractInstance.on('ConsentGranted', (patient, doctor, ipfsCID, category, validUntil, event) => {
+        const catNum = Number(category || 0);
+        const catLabels = ['General', 'Prescriptions', 'Lab Tests', 'Radiology', 'Sensitive'];
         addAuditLog({
           txHash: event?.log?.transactionHash || '',
           type: 'grant',
-          message: 'Consent granted by ' + patient.substring(0, 6) + '... to ' + doctor.substring(0, 6) + '...',
+          message: 'Consent (' + (catLabels[catNum] || 'General') + ') granted by ' + patient.substring(0, 6) + '... to ' + doctor.substring(0, 6) + '...',
           timestamp: Date.now(),
         });
       });
 
+      contractInstance.on('EmergencyAccessTriggered', (patient, doctor, reason, timestamp, event) => {
+        addAuditLog({
+          txHash: event?.log?.transactionHash || '',
+          type: 'event-emergency',
+          message: 'ER Break-Glass by ' + doctor.substring(0, 6) + '... Reason: ' + reason,
+          timestamp: Date.now(),
+        });
+      });
 
       contractInstance.on('ConsentRevoked', (patient, doctor, event) => {
         addAuditLog({
