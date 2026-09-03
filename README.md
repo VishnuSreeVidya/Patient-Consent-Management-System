@@ -261,7 +261,8 @@ Patient-Consent-Management-System/
 |   |   |-- components/
 |   |   |   |-- PatientPortal.jsx     # Encrypted vault, category selector & consent registry
 |   |   |   |-- DoctorPortal.jsx      # Consent verification, Break-Glass modal & scan viewer
-|   |   |   \-- AuditLog.jsx          # Live blockchain event stream & ER audit logging
+|   |   |   |-- AuditLog.jsx          # Live blockchain event stream & ER audit logging
+|   |   |   \-- ConsentCertificateModal.jsx # Cryptographic HIPAA/Web3 compliance certificate
 |   |   |-- contracts/
 |   |   |   \-- contractConfig.js     # Contract ABI, addresses & category styling tokens
 |   |   |-- services/
@@ -382,8 +383,9 @@ Import the private keys output by `npx hardhat node` to test both Patient and Do
 
 ---
 
-## Automated Test Suite
+## Automated Test Suite & Verification Guide
 
+### 1. Automated Smart Contract Unit Tests
 The test suite in `backend/test/PatientConsent.test.cjs` validates all contract behaviors, boundary conditions, edge cases, and event emissions.
 
 ```text
@@ -405,6 +407,20 @@ The test suite in `backend/test/PatientConsent.test.cjs` validates all contract 
 
   9 passing (797ms)
 ```
+
+### 2. End-to-End Functional Verification Checklist
+
+| Step | Action | Expected On-Chain / UI Result |
+| :---: | :--- | :--- |
+| **1** | **Vault Ingestion** | Encrypted payload generated, deterministic IPFS CID calculated, record saved to vault. |
+| **2** | **Grant Consent** | Patient signs `grantConsent` via MetaMask; countdown timer & category pill appear in Active Registry. |
+| **3** | **Compliance Certificate** | Clicking **Certificate** renders printable HIPAA/Web3 certificate with cryptographic serial ID. |
+| **4** | **Doctor Verification** | Doctor queries patient address; contract confirms `hasAccess = true` and displays category badge. |
+| **5** | **Decryption & Diagnostic Viewer** | Entering secret key decrypts record; interactive viewer allows 50% to 200% scan zoom. |
+| **6** | **Emergency Break-Glass** | ER physician logs emergency trauma bypass; emits `EmergencyAccessTriggered` on-chain. |
+| **7** | **Patient Alert Banner** | Red alert banner automatically notifies patient upon login with doctor ID and clinical justification. |
+| **8** | **Live Audit Trail** | Event stream displays real-time block timestamps, transaction hashes, and category tags. |
+| **9** | **Access Revocation** | Patient clicks **Revoke**; doctor verification instantly switches to `NO ACTIVE CONSENT`. |
 
 ---
 
